@@ -8,10 +8,11 @@ import torch.utils.model_zoo as model_zoo
 import torchvision
 
 from cirtorch.layers.pooling import MAC, SPoC, GeM, GeMmp, RMAC, Rpool
+from cirtorch.layers.netvlad import NetVLAD
 from cirtorch.layers.normalization import L2N, PowerLaw
 from cirtorch.datasets.genericdataset import ImagesFromList
 from cirtorch.utils.general import get_data_root
-
+from torchvision import models
 # for some models, we have imported features (convolutions) from caffe because the image retrieval performance is higher for them
 FEATURES = {
     'vgg16'         : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/imagenet/imagenet-caffe-vgg16-features-d369c8e.pth',
@@ -34,6 +35,7 @@ POOLING = {
     'gem'   : GeM,
     'gemmp' : GeMmp,
     'rmac'  : RMAC,
+    'netvlad': NetVLAD,
 }
 
 # TODO: pre-compute for: resnet50-gem-r, resnet50-mac-r, vgg16-mac-r, alexnet-mac-r
@@ -174,7 +176,12 @@ def init_network(params):
     elif architecture.startswith('vgg'):
         features = list(net_in.features.children())[:-1]
     elif architecture.startswith('resnet'):
+        if pooling == 'netvlad':
+            net_in.layer4[2].relu = nn.Identity()
+
         features = list(net_in.children())[:-2]
+
+
     elif architecture.startswith('densenet'):
         features = list(net_in.features.children())
         features.append(nn.ReLU(inplace=True))
@@ -205,8 +212,13 @@ def init_network(params):
     # initialize pooling
     if pooling == 'gemmp':
         pool = POOLING[pooling](mp=dim)
+    elif pooling == 'netvlad':
+        pool = POOLING[pooling]()
+        dim = 32768
     else:
         pool = POOLING[pooling]()
+
+
     
     # initialize regional pooling
     if regional:
@@ -304,7 +316,8 @@ def extract_vectors(net, images, image_size, transform, bbxs=None, ms=[1], msp=1
     return vecs
 
 def extract_ss(net, input):
-    return net(input).cpu().data.squeeze()
+    out = net(input).cpu().data.squeeze()
+    return out
 
 def extract_ms(net, input, ms, msp):
     

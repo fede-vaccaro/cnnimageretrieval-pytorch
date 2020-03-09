@@ -41,6 +41,8 @@ def whitenlearn(X, qidxs, pidxs):
     eigval, eigvec = np.linalg.eig(D)
     order = eigval.argsort()[::-1]
     eigval = eigval[order]
+
+    dim = 2048
     eigvec = eigvec[:, order]
 
     P = np.dot(eigvec.T, P)

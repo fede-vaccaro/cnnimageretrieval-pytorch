@@ -33,7 +33,7 @@ test_whiten_names = ['retrieval-SfM-30k', 'retrieval-SfM-120k']
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
-pool_names = ['mac', 'spoc', 'gem', 'gemmp']
+pool_names = ['mac', 'spoc', 'gem', 'gemmp', 'netvlad']
 loss_names = ['contrastive', 'triplet']
 optimizer_names = ['sgd', 'adam']
 
@@ -521,8 +521,8 @@ def test(datasets, net):
     
         if Lw is not None:
             # whiten the vectors
-            vecs_lw  = whitenapply(vecs, Lw['m'], Lw['P'])
-            qvecs_lw = whitenapply(qvecs, Lw['m'], Lw['P'])
+            vecs_lw  = whitenapply(vecs, Lw['m'], Lw['P'], dimensions=2048)
+            qvecs_lw = whitenapply(qvecs, Lw['m'], Lw['P'], dimensions=2048)
 
             # search, rank, and print
             scores = np.dot(vecs_lw.T, qvecs_lw)
