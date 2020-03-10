@@ -8,7 +8,7 @@ import torch.utils.model_zoo as model_zoo
 import torchvision
 
 from cirtorch.layers.pooling import MAC, SPoC, GeM, GeMmp, RMAC, Rpool
-from cirtorch.layers.netvlad import NetVLAD
+from cirtorch.layers.netvlad import NetVLAD, MyNetVLAD
 from cirtorch.layers.normalization import L2N, PowerLaw
 from cirtorch.datasets.genericdataset import ImagesFromList
 from cirtorch.utils.general import get_data_root
@@ -35,7 +35,7 @@ POOLING = {
     'gem'   : GeM,
     'gemmp' : GeMmp,
     'rmac'  : RMAC,
-    'netvlad': NetVLAD,
+    'netvlad': MyNetVLAD# NetVLAD,
 }
 
 # TODO: pre-compute for: resnet50-gem-r, resnet50-mac-r, vgg16-mac-r, alexnet-mac-r

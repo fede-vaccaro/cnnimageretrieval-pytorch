@@ -61,10 +61,11 @@ class NetVLAD(nn.Module):
 
         return vlad
 
+
 class MyNetVLAD(nn.Module):
     """NetVLAD layer implementation"""
 
-    def __init__(self, num_clusters=32, dim=512, alpha=30.0,
+    def __init__(self, num_clusters=64, dim=512, alpha=30.0,
                  normalize_input=True):
         """
         Args:
@@ -77,56 +78,51 @@ class MyNetVLAD(nn.Module):
             normalize_input : bool
                 If true, descriptor-wise L2 normalization is applied to input.
         """
-        super(NetVLAD, self).__init__()
+        super(MyNetVLAD, self).__init__()
         self.num_clusters = num_clusters
         self.dim = dim
         self.alpha = alpha
         self.normalize_input = normalize_input
-        # self.conv = nn.Conv2d(dim, num_clusters, kernel_size=(1, 1), bias=True)
-        self.conv = nn.Linear(dim, num_clusters)
-        self.centroids = nn.Parameter(torch.rand(num_clusters, dim))
-        self._init_params()
 
-    def _init_params(self):
-        self.conv.weight = nn.Parameter(
-            (2.0 * self.alpha * self.centroids)#.unsqueeze(-1).unsqueeze(-1)
-        )
-        self.conv.bias = nn.Parameter(
-            - self.alpha * self.centroids.norm(dim=1)
-        )
+        self.centroids = nn.Parameter(torch.rand(dim, num_clusters), requires_grad=True)
+        self.assignment_weights = nn.Parameter(
+            (2.0 * self.alpha * self.centroids)  # .unsqueeze(-1).unsqueeze(-1)
+            , requires_grad=True)
+        self.assignment_bias = nn.Parameter(
+            - self.alpha * self.centroids.norm(dim=0)
+            , requires_grad=True)
 
     def forward(self, x):
-        # N, C = x.shape[:2]
+        # assignment weights = D x K
+        # centroids = D x K
 
-        print(x.shape)
+        N, C, W, H = x.shape
 
-        max_pool3 = F.max_pool2d(x, kernel_size=3, stride=1)
-        max_pool2 = F.max_pool2d(x, kernel_size=2, stride=1)
+        x = x.view(N, C, W * H)
 
-        pool3_reshaped = max_pool3.view(self.dim, -1)
-        pool2_reshaped = max_pool2.view(self.dim, -1)
+        x = x.permute(0, 2, 1)
 
-        print(pool3_reshaped.shape, pool3_reshaped.shape)
-
-        x = torch.cat([pool3_reshaped, pool2_reshaped], dim=1).transpose(0,1)
-
-        print(x.shape)
+        x = x.reshape(N, -1, 512)
 
         if self.normalize_input:
-            x = F.normalize(x, p=2, dim=1)  # across descriptor dim
+            x = F.normalize(x, p=2, dim=2)  # across descriptor dim
 
         # soft-assignment
-        #soft_assign = self.conv(x).view(N, self.num_clusters, -1)
-        soft_assign = self.conv(x)
-        soft_assign = F.softmax(soft_assign, dim=1)
+        soft_assign = torch.matmul(x, self.assignment_weights) + self.assignment_bias
+        soft_assign = F.softmax(soft_assign, dim=2)
 
-        # x_flatten = x.view(N, C, -1)
-        x_flatten = x.unsqueeze(-1)
+        # soft_assign dim:
 
         # calculate residuals to each clusters
-        residual = x_flatten.expand(self.num_clusters, -1, -1, -1).permute(1, 0, 2, 3) - self.centroids.expand(x_flatten.size(-1), -1, -1).permute(1, 2, 0).unsqueeze(0)
-        residual *= soft_assign.unsqueeze(2)
-        vlad = residual.sum(dim=-1)
+
+        a_sum = torch.sum(soft_assign, dim=1).unsqueeze(1)
+        a = a_sum * self.centroids
+        soft_assign = soft_assign.permute((0, 2, 1))
+
+        vlad = torch.matmul(soft_assign, x)
+        vlad = vlad.permute((0, 2, 1))
+        vlad = vlad - a
+
 
         vlad = F.normalize(vlad, p=2, dim=2)  # intra-normalization
         vlad = vlad.view(x.size(0), -1)  # flatten
