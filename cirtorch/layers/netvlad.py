@@ -92,6 +92,15 @@ class MyNetVLAD(nn.Module):
             - self.alpha * self.centroids.norm(dim=0)
             , requires_grad=True)
 
+    def init_params(self, centroids):
+        self.centroids = nn.Parameter(torch.Tensor(centroids), requires_grad=True)
+        self.assignment_weights = nn.Parameter(
+            (2.0 * self.alpha * self.centroids)  # .unsqueeze(-1).unsqueeze(-1)
+            , requires_grad=True)
+        self.assignment_bias = nn.Parameter(
+            - self.alpha * self.centroids.norm(dim=0)
+            , requires_grad=True)
+
     def forward(self, x):
         # assignment weights = D x K
         # centroids = D x K
@@ -122,7 +131,6 @@ class MyNetVLAD(nn.Module):
         vlad = torch.matmul(soft_assign, x)
         vlad = vlad.permute((0, 2, 1))
         vlad = vlad - a
-
 
         vlad = F.normalize(vlad, p=2, dim=2)  # intra-normalization
         vlad = vlad.view(x.size(0), -1)  # flatten

@@ -6,7 +6,7 @@ import torch.utils.data as data
 
 from cirtorch.datasets.datahelpers import default_loader, imresize
 
-
+import torchvision.datasets
 class ImagesFromList(data.Dataset):
     """A generic data loader that loads images from a list 
         (Based on ImageFolder from pytorch)

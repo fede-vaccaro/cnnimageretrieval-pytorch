@@ -96,7 +96,10 @@ class ImageRetrievalNet(nn.Module):
         self.whiten = whiten
         self.norm = L2N()
         self.meta = meta
-    
+
+    def compute_features(self, x):
+        return self.features(x)
+
     def forward(self, x):
         # x -> features
         o = self.features(x)

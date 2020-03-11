@@ -12,9 +12,11 @@ import torch
 import torch.nn as nn
 import torch.optim
 import torch.utils.data
+import torchvision
 
 import torchvision.transforms as transforms
 import torchvision.models as models
+from torchvision.datasets import folder
 
 from cirtorch.networks.imageretrievalnet import init_network, extract_vectors
 from cirtorch.layers.loss import ContrastiveLoss, TripletLoss
@@ -25,6 +27,8 @@ from cirtorch.utils.download import download_train, download_test
 from cirtorch.utils.whiten import whitenlearn, whitenapply
 from cirtorch.utils.evaluate import compute_map_and_print
 from cirtorch.utils.general import get_data_root, htime
+from sklearn.cluster import MiniBatchKMeans
+from sklearn import preprocessing
 
 training_dataset_names = ['retrieval-SfM-120k']
 test_datasets_names = ['oxford5k', 'paris6k', 'roxford5k', 'rparis6k']
@@ -187,6 +191,60 @@ def main():
 
     # move network to gpu
     model.cuda()
+
+    if model_params['pooling'] == 'netvlad':
+        normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(size=(512, 512)),
+            torchvision.transforms.ToTensor(),
+            normalize,
+        ])
+
+        image_folder = folder.ImageFolder(root="/mnt/m2/dataset", transform=transform)
+
+        train_loader = torch.utils.data.DataLoader(
+            image_folder,
+            batch_size=64,
+            num_workers=8,
+            shuffle=True
+        )
+
+        n_batches = 10
+
+        descs_list = []
+        i = 0
+        with torch.no_grad():
+            for x, _ in train_loader:
+                model.eval()
+                desc = model.compute_features(x.cuda())
+                N, dim, h, w = desc.shape
+                desc = desc.view(N, dim, h*w).permute(0, 2, 1).reshape(N, -1, 512)
+                desc = desc.cpu().numpy().astype('float32')
+                descs_list.append(desc)
+                print(">> Extracted batch {}/{} - NetVLAD initialization -".format(i+1, n_batches))
+                i+=1
+                if i == n_batches:
+                    break
+
+        descs_list = np.array(descs_list).reshape(-1, 512)
+        print(descs_list.shape)
+        print(">> Sampling local features ")
+        # locals = np.vstack((m[np.random.randint(len(m), size=150)] for m in descs_list)).astype('float32')
+        locals = descs_list[np.random.randint(len(descs_list), size=len(descs_list)//3)]
+
+        np.random.shuffle(locals)
+        print(">> Locals extracted shape : {}".format(locals.shape))
+
+        n_clust = 64
+
+        locals = preprocessing.normalize(locals, axis=1)
+
+        print(">> Fitting centroids with K-Means")
+        kmeans = MiniBatchKMeans(n_clusters=n_clust).fit(locals)
+        centroids = kmeans.cluster_centers_
+        print(">> Centroids shape: ", centroids.shape)
+        model.pool.init_params(centroids.T)
+        print(">> NetVLAD initialized")
 
     # define loss function (criterion) and optimizer
     if args.loss == 'contrastive':
@@ -446,7 +504,7 @@ def test(datasets, net):
     print('>> Evaluating network on test datasets...')
 
     # for testing we use image size of max 1024
-    image_size = 1024
+    image_size = 512
 
     # moving network to gpu and eval mode
     net.cuda()
