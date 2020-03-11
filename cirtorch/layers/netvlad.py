@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import numpy as np
 
 # from https://github.com/lyakaap/NetVLAD-pytorch
 
@@ -62,6 +62,14 @@ class NetVLAD(nn.Module):
         return vlad
 
 
+def make_locals(x):
+    N, C, W, H = x.shape
+    x = x.permute(0, 2, 3, 1)
+    # x = x.view(N, -1, C)
+    x = x.reshape(N, -1, 512)
+    return x
+
+
 class MyNetVLAD(nn.Module):
     """NetVLAD layer implementation"""
 
@@ -92,7 +100,7 @@ class MyNetVLAD(nn.Module):
             - self.alpha * self.centroids.norm(dim=0)
             , requires_grad=True)
 
-    def init_params(self, centroids):
+    def init_params(self, centroids: np.array):
         self.centroids = nn.Parameter(torch.Tensor(centroids), requires_grad=True)
         self.assignment_weights = nn.Parameter(
             (2.0 * self.alpha * self.centroids)  # .unsqueeze(-1).unsqueeze(-1)
@@ -105,13 +113,15 @@ class MyNetVLAD(nn.Module):
         # assignment weights = D x K
         # centroids = D x K
 
-        N, C, W, H = x.shape
+        max_pooled_feat_3 = F.max_pool2d(x, kernel_size=3, stride=1)
+        max_pooled_feat_2 = F.max_pool2d(x, kernel_size=2, stride=1)
 
-        x = x.view(N, C, W * H)
+        reshaped_pool_3 = make_locals(max_pooled_feat_3)
+        reshaped_pool_2 = make_locals(max_pooled_feat_2)
 
-        x = x.permute(0, 2, 1)
+        x = torch.cat([reshaped_pool_2, reshaped_pool_3], dim=1)
 
-        x = x.reshape(N, -1, 512)
+        # x = make_locals(x)
 
         if self.normalize_input:
             x = F.normalize(x, p=2, dim=2)  # across descriptor dim

@@ -29,6 +29,7 @@ from cirtorch.utils.evaluate import compute_map_and_print
 from cirtorch.utils.general import get_data_root, htime
 from sklearn.cluster import MiniBatchKMeans
 from sklearn import preprocessing
+from ..layers.netvlad import make_locals
 
 training_dataset_names = ['retrieval-SfM-120k']
 test_datasets_names = ['oxford5k', 'paris6k', 'roxford5k', 'rparis6k']
@@ -195,7 +196,7 @@ def main():
     if model_params['pooling'] == 'netvlad':
         normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(size=(512, 512)),
+            torchvision.transforms.Resize(size=(364, 364)),
             torchvision.transforms.ToTensor(),
             normalize,
         ])
@@ -217,8 +218,16 @@ def main():
             for x, _ in train_loader:
                 model.eval()
                 desc = model.compute_features(x.cuda())
-                N, dim, h, w = desc.shape
-                desc = desc.view(N, dim, h*w).permute(0, 2, 1).reshape(N, -1, 512)
+                max_pooled_feat_3 = torch.nn.functional.max_pool2d(desc, kernel_size=3, stride=1)
+                max_pooled_feat_2 = torch.nn.functional.max_pool2d(desc, kernel_size=2, stride=1)
+
+                reshaped_pool_3 = make_locals(max_pooled_feat_3)
+                reshaped_pool_2 = make_locals(max_pooled_feat_2)
+
+                desc = torch.cat([reshaped_pool_2, reshaped_pool_3], dim=1)
+
+                # N, dim, h, w = desc.shape
+                # desc = desc.view(N, dim, h*w).permute(0, 2, 1).reshape(N, -1, 512)
                 desc = desc.cpu().numpy().astype('float32')
                 descs_list.append(desc)
                 print(">> Extracted batch {}/{} - NetVLAD initialization -".format(i+1, n_batches))
@@ -504,7 +513,7 @@ def test(datasets, net):
     print('>> Evaluating network on test datasets...')
 
     # for testing we use image size of max 1024
-    image_size = 512
+    image_size = 364
 
     # moving network to gpu and eval mode
     net.cuda()
